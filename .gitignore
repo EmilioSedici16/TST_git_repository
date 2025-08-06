@@ -16,40 +16,52 @@ parts/
 sdist/
 var/
 wheels/
-pip-wheel-metadata/
-share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
 
-# Virtual Environment
-venv/
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Virtual environments
 env/
-ENV/
-
-# Environment variables
+venv/
 .env
+.venv/
+ENV/
+env.bak/
+venv.bak/
 
-# Model files (too large for git)
-*.pt
-*.pth
-*.onnx
-*.engine
+# Jupyter Notebook
+.ipynb_checkpoints
 
-# Results and outputs
-runs/
-results/
-output/
+# IPython
+profile_default/
+ipython_config.py
 
-# IDE
-.vscode/launch.json
-.idea/
-*.swp
-*.swo
-*~
+# pyenv
+.python-version
 
-# OS
+# OS generated files
 .DS_Store
 .DS_Store?
 ._*
@@ -57,22 +69,78 @@ output/
 .Trashes
 ehthumbs.db
 Thumbs.db
+desktop.ini
 
-# Jupyter
-.ipynb_checkpoints/
+# Windows
+*.lnk
 
-# Data (potentially large)
-data/*.jpg
-data/*.jpeg
-data/*.png
-data/*.mp4
-data/*.avi
-!data/test_image.jpg
+# IDE
+.vscode/
+.cursor/
+.idea/
+*.swp
+*.swo
+*~
 
-# Logs
+# Временные файлы
+*.tmp
+*.temp
+*.log
+
+# Большие видео файлы (хранятся в UTair Cloud)
+Videos/*.mp4
+Videos/*.avi
+Videos/*.mov
+Videos/*.mkv
+Videos/*.webm
+Videos/*.wmv
+Videos/*.flv
+
+# Файлы синхронизации и инструкции в Videos
+!Videos/.gitkeep
+!Videos/README_*.txt
+!Videos/ИНСТРУКЦИЯ_*.md
+
+# Исключить папку Videos если это символическая ссылка на облако
+# (Windows создает специальные файлы для ссылок)
+Videos/desktop.ini
+Videos/Thumbs.db
+
+# Извлеченные кадры (большие объемы)
+Images/*.jpg
+Images/*.jpeg
+Images/*.png
+Images/*.bmp
+Images/*.tiff
+!Images/.gitkeep
+
+# Roboflow и модели
+data/raw/*
+data/processed/*
+data/results/*
+!data/.gitkeep
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/results/.gitkeep
+
+# Модели (большие файлы)
+models/*.pt
+models/*.onnx
+models/*.pb
+models/*.h5
+models/*.pkl
+!models/.gitkeep
+
+# YOLO кэш
+runs/
+yolov*/
+
+# Roboflow кэш
+.roboflow/
+
+# Streamlit кэш
+.streamlit/
+
+# Логи
 *.log
 logs/
-
-# Temporary files
-tmp/
-temp/
