@@ -1,0 +1,55 @@
+# Cursor AI Rules for Computer Vision Project
+
+## Project Context
+This is a computer vision project using YOLOv8 and Roboflow for object detection, specifically focused on workplace safety monitoring (people, helmets, lift platforms).
+
+## Tech Stack
+- Python 3.8+
+- YOLOv8 (Ultralytics)
+- Roboflow API
+- OpenCV
+- Streamlit (web interface)
+- NumPy, Matplotlib
+
+## Code Style Guidelines
+- Use Russian comments for user-facing messages
+- Use English for technical comments and docstrings
+- Follow PEP 8 style guide
+- Use type hints where appropriate
+- Keep functions focused and well-documented
+
+## File Structure
+- `app.py` - Streamlit web application
+- `detect.py` - Main detection script  
+- `safety_detection.py` - Specialized workplace safety detection
+- `utils.py` - Helper functions and classes
+- `test_basic.py` - Basic testing functionality
+
+## Key Classes and Functions
+- `RoboflowManager` - Handles Roboflow API integration
+- `ImageProcessor` - Image loading, processing, visualization
+- `SafetyDetector` - Specialized safety analysis
+- `Visualizer` - Results visualization
+
+## Environment Setup
+- Always use virtual environment: `source venv/bin/activate`
+- Required API key: `ROBOFLOW_API_KEY`
+- Python dependencies in `requirements.txt`
+
+## Coding Preferences
+- Prefer explicit over implicit
+- Use descriptive variable names
+- Add error handling for file operations and API calls
+- Include progress indicators for long operations
+- Use emojis in user-facing messages for better UX
+
+## Testing
+- Test with `python test_basic.py`
+- Use sample images from `data/` folder
+- Always test with and without Roboflow API key
+
+## Documentation
+- Keep README.md updated
+- Use Russian for user documentation
+- Include code examples in documentation
+- Document API parameters and return values
