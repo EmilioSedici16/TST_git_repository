@@ -9,8 +9,17 @@ import cv2
 import numpy as np
 from pathlib import Path
 from ultralytics import YOLO
-from utils import ImageProcessor, RoboflowManager
+from utils import ImageProcessor, RoboflowManager, convert_ultralytics_to_supervision, SUPERVISION_AVAILABLE
 import json
+
+# Импорт supervision если доступен
+if SUPERVISION_AVAILABLE:
+    try:
+        import supervision as sv
+    except ImportError:
+        sv = None
+else:
+    sv = None
 
 class SafetyDetector:
     """Класс для детекции объектов безопасности"""
@@ -55,6 +64,24 @@ class SafetyDetector:
             return False
         except Exception as e:
             print(f"❌ Ошибка загрузки Roboflow модели: {e}")
+            return False
+    
+    def load_rf_detr_model(self, workspace, project, version=1):
+        """
+        Загрузить RF-DETR модель (трансформерная детекция)
+        RF-DETR лучше работает с мелкими объектами (каски)
+        """
+        try:
+            rf_manager = RoboflowManager()
+            if rf_manager.api_key:
+                model = rf_manager.get_rf_detr_model(workspace, project, version)
+                if model:
+                    self.model = model
+                    print(f"✅ Загружена RF-DETR модель: {project}")
+                    return True
+            return False
+        except Exception as e:
+            print(f"❌ Ошибка загрузки RF-DETR модели: {e}")
             return False
     
     def detect_objects(self, image):
@@ -146,8 +173,101 @@ class SafetyDetector:
         
         return matched
     
-    def draw_safety_results(self, image, detections, stats):
-        """Отрисовка результатов с акцентом на безопасность"""
+    def draw_safety_results(self, image, detections, stats, use_supervision=True):
+        """
+        Отрисовка результатов с акцентом на безопасность
+        
+        Args:
+            image: Исходное изображение
+            detections: Список детекций
+            stats: Статистика безопасности
+            use_supervision: Использовать supervision для визуализации (если доступен)
+        """
+        # Используем supervision если доступен
+        if use_supervision and SUPERVISION_AVAILABLE and detections:
+            return self._draw_safety_results_supervision(image, detections, stats)
+        else:
+            return self._draw_safety_results_opencv(image, detections, stats)
+    
+    def _draw_safety_results_supervision(self, image, detections, stats):
+        """Визуализация с использованием supervision"""
+        boxes = []
+        confidences = []
+        class_ids = []
+        labels = []
+        colors = []
+        
+        # Цветовая схема для разных типов объектов
+        if sv is not None:
+            color_map = {
+                'person': sv.Color.RED,
+                'helmet': sv.Color.GREEN,
+                'lift': sv.Color.BLUE,
+                'platform': sv.Color.BLUE,
+                'crane': sv.Color.BLUE
+            }
+        else:
+            color_map = {}
+        
+        for detection in detections:
+            bbox = detection.get('bbox', [])
+            if len(bbox) == 4:
+                boxes.append(bbox)
+                confidences.append(detection.get('confidence', 0.0))
+                class_ids.append(detection.get('class', 0))
+                
+                class_name = detection.get('class_name', 'unknown')
+                label = f"{class_name}: {detection.get('confidence', 0.0):.2f}"
+                labels.append(label)
+                
+                # Определяем цвет
+                if sv is not None:
+                    color = sv.Color.WHITE
+                    for key, sv_color in color_map.items():
+                        if key in class_name.lower():
+                            color = sv_color
+                            break
+                    colors.append(color)
+                else:
+                    colors.append((255, 255, 255))  # Белый по умолчанию
+        
+        if not boxes:
+            result_image = image.copy()
+        else:
+            # Создаем Detections объект
+            detections_sv = sv.Detections(
+                xyxy=np.array(boxes),
+                confidence=np.array(confidences),
+                class_id=np.array(class_ids)
+            )
+            
+            # Создаем аннотаторы
+            if sv is not None:
+                box_annotator = sv.BoxAnnotator()
+                label_annotator = sv.LabelAnnotator()
+            else:
+                # Fallback если supervision недоступен
+                return self._draw_safety_results_opencv(image, detections, stats)
+            
+            # Аннотируем
+            result_image = box_annotator.annotate(
+                scene=image.copy(),
+                detections=detections_sv
+            )
+            
+            result_image = label_annotator.annotate(
+                scene=result_image,
+                detections=detections_sv,
+                labels=labels
+            )
+        
+        # Добавляем панель статистики
+        self.draw_safety_panel(result_image, stats)
+        
+        return result_image
+    
+    def _draw_safety_results_opencv(self, image, detections, stats):
+        """Визуализация с использованием OpenCV (fallback)"""
         result_image = image.copy()
         
         for detection in detections:

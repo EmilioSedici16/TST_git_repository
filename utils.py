@@ -12,6 +12,29 @@ import requests
 from PIL import Image
 import io
 
+# Попытка импортировать supervision (опционально)
+try:
+    import supervision as sv
+    SUPERVISION_AVAILABLE = True
+except ImportError:
+    SUPERVISION_AVAILABLE = False
+    # Не выводим сообщение при импорте, чтобы избежать проблем с кодировкой
+
+# Попытка импортировать inference (опционально)
+try:
+    from inference import get_model
+    INFERENCE_AVAILABLE = True
+except ImportError:
+    INFERENCE_AVAILABLE = False
+    # Не выводим сообщение при импорте, чтобы избежать проблем с кодировкой
+
+# Попытка импортировать roboflow_workflow_client (всегда доступен, так как это наш модуль)
+try:
+    from roboflow_workflow_client import RoboflowWorkflowClient
+    WORKFLOW_CLIENT_AVAILABLE = True
+except ImportError:
+    WORKFLOW_CLIENT_AVAILABLE = False
+
 
 class RoboflowManager:
     """Класс для управления интеграцией с Roboflow"""
@@ -58,6 +81,44 @@ class RoboflowManager:
         except Exception as e:
             print(f"❌ Ошибка получения модели: {e}")
             return None
+    
+    def get_inference_model(self, workspace: str, project: str, version: int, model_type: str = "yolov8"):
+        """
+        Получить модель через библиотеку inference (расширенная функциональность)
+        
+        Args:
+            workspace: Workspace в Roboflow
+            project: Название проекта
+            version: Версия модели
+            model_type: Тип модели (yolov8, rf-detr, и т.д.)
+        
+        Returns:
+            Модель для inference или None
+        """
+        if not INFERENCE_AVAILABLE:
+            print("⚠️ Библиотека inference не установлена")
+            return None
+        
+        if not self.api_key:
+            print("⚠️ API ключ Roboflow не установлен")
+            return None
+        
+        try:
+            model_id = f"{workspace}/{project}/{version}"
+            model = get_model(model_id=model_id, api_key=self.api_key)
+            print(f"✅ Загружена модель через inference: {model_id}")
+            return model
+        except Exception as e:
+            print(f"❌ Ошибка загрузки модели через inference: {e}")
+            return None
+    
+    def get_rf_detr_model(self, workspace: str, project: str, version: int):
+        """
+        Получить RF-DETR модель (трансформерная детекция)
+        
+        RF-DETR лучше работает с мелкими объектами (каски)
+        """
+        return self.get_inference_model(workspace, project, version, model_type="rf-detr")
 
 
 class ImageProcessor:
@@ -83,7 +144,8 @@ class ImageProcessor:
         return cv2.resize(image, target_size)
     
     @staticmethod
-    def draw_bboxes(image: np.ndarray, detections: List[Dict], class_names: Optional[List[str]] = None) -> np.ndarray:
+    def draw_bboxes(image: np.ndarray, detections: List[Dict], class_names: Optional[List[str]] = None, 
+                   use_supervision: bool = True) -> np.ndarray:
         """
         Нарисовать ограничивающие рамки на изображении
         
@@ -91,7 +153,74 @@ class ImageProcessor:
             image: Исходное изображение
             detections: Список детекций в формате [{'bbox': [x1, y1, x2, y2], 'confidence': float, 'class': int}]
             class_names: Список названий классов
+            use_supervision: Использовать supervision для визуализации (если доступен)
         """
+        # Используем supervision если доступен
+        if use_supervision and SUPERVISION_AVAILABLE:
+            return ImageProcessor._draw_bboxes_supervision(image, detections, class_names)
+        else:
+            return ImageProcessor._draw_bboxes_opencv(image, detections, class_names)
+    
+    @staticmethod
+    def _draw_bboxes_supervision(image: np.ndarray, detections: List[Dict], 
+                                class_names: Optional[List[str]] = None) -> np.ndarray:
+        """Визуализация с использованием supervision"""
+        if not detections:
+            return image
+        
+        # Конвертируем детекции в формат supervision
+        boxes = []
+        confidences = []
+        class_ids = []
+        labels = []
+        
+        for detection in detections:
+            bbox = detection.get('bbox', [])
+            if len(bbox) == 4:
+                boxes.append(bbox)
+                confidences.append(detection.get('confidence', 0.0))
+                class_id = detection.get('class', 0)
+                class_ids.append(class_id)
+                
+                # Формируем метку
+                label = f"Class {class_id}"
+                if class_names and class_id < len(class_names):
+                    label = class_names[class_id]
+                label += f" {detection.get('confidence', 0.0):.2f}"
+                labels.append(label)
+        
+        if not boxes:
+            return image
+        
+        # Создаем Detections объект
+        detections_sv = sv.Detections(
+            xyxy=np.array(boxes),
+            confidence=np.array(confidences),
+            class_id=np.array(class_ids)
+        )
+        
+        # Создаем аннотаторы
+        box_annotator = sv.BoxAnnotator()
+        label_annotator = sv.LabelAnnotator()
+        
+        # Аннотируем изображение
+        annotated_image = box_annotator.annotate(
+            scene=image.copy(),
+            detections=detections_sv
+        )
+        
+        annotated_image = label_annotator.annotate(
+            scene=annotated_image,
+            detections=detections_sv,
+            labels=labels
+        )
+        
+        return annotated_image
+    
+    @staticmethod
+    def _draw_bboxes_opencv(image: np.ndarray, detections: List[Dict], 
+                            class_names: Optional[List[str]] = None) -> np.ndarray:
+        """Визуализация с использованием OpenCV (fallback)"""
         img_with_boxes = image.copy()
         
         for detection in detections:
@@ -245,6 +374,57 @@ def create_sample_detection():
             'class': 1
         }
     ]
+
+
+def convert_ultralytics_to_supervision(results, class_names: Optional[List[str]] = None):
+    """
+    Конвертировать результаты Ultralytics в формат supervision
+    
+    Args:
+        results: Результаты от YOLO модели
+        class_names: Список названий классов
+    
+    Returns:
+        sv.Detections объект или None
+    """
+    if not SUPERVISION_AVAILABLE:
+        return None
+    
+    boxes = []
+    confidences = []
+    class_ids = []
+    
+    for r in results:
+        if r.boxes is not None:
+            boxes.extend(r.boxes.xyxy.cpu().numpy().tolist())
+            confidences.extend(r.boxes.conf.cpu().numpy().tolist())
+            class_ids.extend(r.boxes.cls.cpu().numpy().astype(int).tolist())
+    
+    if not boxes:
+        return None
+    
+    return sv.Detections(
+        xyxy=np.array(boxes),
+        confidence=np.array(confidences),
+        class_id=np.array(class_ids)
+    )
+
+
+def filter_detections_by_class(detections_sv, class_id: int):
+    """
+    Фильтровать детекции по классу (для supervision)
+    
+    Args:
+        detections_sv: sv.Detections объект
+        class_id: ID класса для фильтрации
+    
+    Returns:
+        Отфильтрованные детекции
+    """
+    if not SUPERVISION_AVAILABLE or detections_sv is None:
+        return None
+    
+    return detections_sv[detections_sv.class_id == class_id]
 
 
 if __name__ == "__main__":
